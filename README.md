@@ -66,3 +66,18 @@ civicpulse/
 > **To be completed in a later phase.** Local service orchestration, database migrations, backend startup, frontend startup, and test commands will be documented when those implementations are added.
 
 Never commit a real `.env` file or credentials. Start from `.env.example` and use local, untracked values.
+
+## Phase 2 Backend Development
+
+The backend core can be tested locally with an isolated SQLite database while production configuration targets PostgreSQL 16:
+
+```powershell
+cd backend
+python -m pip install -e ".[dev]"
+$env:DATABASE_URL = "sqlite+aiosqlite:///./civicpulse-dev.db"
+alembic upgrade head
+pytest -q
+uvicorn app.main:app --reload
+```
+
+Phase 2 intentionally defers Redis and external AI providers. The scope assumption is recorded in [ADR 0002](docs/adr/0002-phase2-backend-scope.md).
