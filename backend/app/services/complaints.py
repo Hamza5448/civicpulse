@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,22 +7,53 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.complaint import Category, Complaint, ComplaintStatus, Priority
 from app.domain.errors import ComplaintNotFoundError, InvalidStatusTransitionError
 from app.domain.transitions import VALID_STATUS_TRANSITIONS
+from app.providers.triage.base import TriageProvider
+from app.providers.triage.rules import RuleBasedTriage
 from app.repositories.complaints import ComplaintRepository
 from app.schemas.complaints import ComplaintCreate
 
+logger = logging.getLogger("civicpulse.triage")
+
 
 class ComplaintService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        provider: TriageProvider | None = None,
+        fallback_provider: TriageProvider | None = None,
+    ) -> None:
         self.repository = ComplaintRepository(session)
         self.session = session
+        self.provider = provider or RuleBasedTriage()
+        self.fallback_provider = fallback_provider or RuleBasedTriage()
 
     async def create(self, data: ComplaintCreate) -> Complaint:
+        complaint_id = uuid.uuid4()
+        started = time.perf_counter()
+        triaged_by = self.provider.name
+        try:
+            result = await self.provider.triage(data.text, data.location)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "triage provider failed; using fallback",
+                extra={
+                    "complaint_id": str(complaint_id),
+                    "provider": self.provider.name,
+                    "error_class": type(exc).__name__,
+                },
+            )
+            result = await self.fallback_provider.triage(data.text, data.location)
+            triaged_by = "rules:fallback"
         complaint = Complaint(
+            id=complaint_id,
             text=data.text,
             location=data.location,
             reporter_contact=data.reporter_contact,
-            category=data.category,
-            priority=data.priority,
+            category=result.category,
+            priority=result.priority,
+            ai_summary=result.summary,
+            triaged_by=triaged_by,
+            triage_latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
         )
         created = await self.repository.create(complaint)
         await self.session.commit()

@@ -13,6 +13,10 @@ class JsonFormatter(logging.Formatter):
         request_id = getattr(record, "request_id", None)
         if request_id:
             payload["request_id"] = request_id
+        for field in ("complaint_id", "provider", "error_class"):
+            value = getattr(record, field, None)
+            if value:
+                payload[field] = value
         return json.dumps(payload)
 
 

@@ -11,6 +11,8 @@ from app.core.config import Settings, get_settings
 from app.core.database import create_engine, create_session_factory
 from app.core.logging import configure_logging
 from app.domain.errors import ComplaintNotFoundError, InvalidStatusTransitionError
+from app.providers.triage.factory import create_triage_provider
+from app.providers.triage.rules import RuleBasedTriage
 from app.routes.complaints import router as complaint_router
 from app.routes.health import router as health_router
 
@@ -40,6 +42,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="CivicPulse API", version="0.1.0", lifespan=lifespan)
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.triage_provider = create_triage_provider(resolved_settings)
+    app.state.fallback_provider = RuleBasedTriage()
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health_router)
     app.include_router(complaint_router)

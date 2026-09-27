@@ -9,6 +9,13 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     log_level: str = "INFO"
+    triage_provider: str = "rules"
+    triage_timeout_seconds: float = 10.0
+    triage_llm_base_url: str = "https://api.groq.com/openai/v1"
+    triage_llm_model: str = "llama-3.1-8b-instant"
+    triage_llm_api_key: str | None = None
+    triage_ollama_base_url: str = "http://localhost:11434"
+    triage_ollama_model: str = "llama3.2:1b"
     database_url: str = Field(
         default="postgresql+asyncpg://civicpulse:replace-with-a-local-password@localhost:5432/civicpulse"
     )

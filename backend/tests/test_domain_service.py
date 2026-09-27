@@ -51,8 +51,8 @@ async def test_service_missing_complaint(session) -> None:
 @pytest.mark.asyncio
 async def test_service_lists_and_filters_complaints(session) -> None:
     service = ComplaintService(session)
-    await service.create(complaint_data(category=Category.WATER, priority=Priority.HIGH))
-    await service.create(complaint_data(category=Category.ROADS))
+    await service.create(complaint_data(text="Burst water main flooding Street 12"))
+    await service.create(complaint_data(text="Large pothole blocking the road near market"))
     items, total = await service.list(
         category=Category.WATER, priority=None, status=None, page=1, page_size=20
     )
