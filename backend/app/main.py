@@ -5,17 +5,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from redis.asyncio import Redis
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.database import create_engine, create_session_factory
 from app.core.logging import configure_logging
 from app.domain.errors import ComplaintNotFoundError, InvalidStatusTransitionError
+from app.domain.rate_limit import RateLimitExceededError
+from app.providers.cache.redis import RedisRateLimiter, RedisStatsCache
 from app.providers.triage.factory import create_triage_provider
 from app.providers.triage.rules import RuleBasedTriage
 from app.routes.complaints import router as complaint_router
 from app.routes.health import router as health_router
 from app.routes.meta import router as meta_router
+from app.routes.stats import router as stats_router
 from app.services.triage import TriageObservability
 
 logger = logging.getLogger("civicpulse")
@@ -35,15 +39,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(resolved_settings.log_level)
     engine = create_engine(resolved_settings)
     session_factory = create_session_factory(engine)
+    redis = Redis.from_url(resolved_settings.redis_url, decode_responses=True)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         yield
         await app.state.engine.dispose()
+        await app.state.redis.aclose()
 
     app = FastAPI(title="CivicPulse API", version="0.1.0", lifespan=lifespan)
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.settings = resolved_settings
+    app.state.redis = redis
+    app.state.stats_cache = RedisStatsCache(redis)
+    app.state.rate_limiter = RedisRateLimiter(
+        redis, resolved_settings.complaint_rate_limit, resolved_settings.complaint_rate_window_seconds
+    )
     app.state.triage_provider = create_triage_provider(resolved_settings)
     app.state.fallback_provider = RuleBasedTriage()
     app.state.triage_observability = TriageObservability()
@@ -51,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(complaint_router)
     app.include_router(meta_router)
+    app.include_router(stats_router)
 
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         return JSONResponse(status_code=400, content={"detail": exc.errors()})
@@ -66,6 +79,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             extra={"request_id": request.state.request_id},
         )
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(RateLimitExceededError)
+    async def rate_limit_handler(request: Request, exc: RateLimitExceededError):
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": str(exc.retry_after)},
+            content={"detail": str(exc)},
+        )
 
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     return app

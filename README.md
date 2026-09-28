@@ -80,4 +80,4 @@ pytest -q
 uvicorn app.main:app --reload
 ```
 
-Phase 3 adds selectable Rules, Simulated, hosted LLM, and Ollama triage providers with structured validation and rules fallback. Redis caching and distributed rate limiting remain deferred. The scope assumptions are recorded in [ADR 0002](docs/adr/0002-phase2-backend-scope.md) and [ADR 0003](docs/adr/0003-triage-provider-strategy.md).
+Phase 3 adds selectable Rules, Simulated, hosted LLM, and Ollama triage providers with structured validation and rules fallback. Phase 4 adds Redis-backed statistics caching and distributed complaint rate limiting. The scope assumptions are recorded in [ADR 0002](docs/adr/0002-phase2-backend-scope.md), [ADR 0003](docs/adr/0003-triage-provider-strategy.md), and [ADR 0005](docs/adr/0005-redis-cache-and-rate-limit.md).

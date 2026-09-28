@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+asyncpg://civicpulse:replace-with-a-local-password@localhost:5432/civicpulse"
     )
+    redis_url: str = "redis://localhost:6379/0"
+    stats_cache_ttl_seconds: int = 30
+    complaint_rate_limit: int = 10
+    complaint_rate_window_seconds: int = 60
 
 
 @lru_cache

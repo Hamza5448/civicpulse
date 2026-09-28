@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
+from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -20,5 +21,12 @@ async def ready(request: Request) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "not_ready", "dependency": "postgres"},
+        )
+    try:
+        await request.app.state.redis.ping()
+    except RedisError:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not_ready", "dependency": "redis"},
         )
     return JSONResponse(status_code=status.HTTP_200_OK, content={"status": "ready"})
