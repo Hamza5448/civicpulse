@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     stats_cache_ttl_seconds: int = 30
     complaint_rate_limit: int = 10
     complaint_rate_window_seconds: int = 60
+    triage_cache_ttl_seconds: int = 86400
 
 
 @lru_cache

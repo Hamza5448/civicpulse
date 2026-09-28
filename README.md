@@ -76,11 +76,16 @@ cd backend
 python -m pip install -e ".[dev]"
 $env:DATABASE_URL = "sqlite+aiosqlite:///./civicpulse-dev.db"
 alembic upgrade head
+cd ..
+python scripts/seed.py
+cd backend
 pytest -q
 uvicorn app.main:app --reload
 ```
 
 Phase 3 adds selectable Rules, Simulated, hosted LLM, and Ollama triage providers with structured validation and rules fallback. Phase 4 adds Redis-backed statistics caching and distributed complaint rate limiting. The scope assumptions are recorded in [ADR 0002](docs/adr/0002-phase2-backend-scope.md), [ADR 0003](docs/adr/0003-triage-provider-strategy.md), and [ADR 0005](docs/adr/0005-redis-cache-and-rate-limit.md).
+
+The backend also exposes Prometheus-compatible request counters and latency summaries at `/metrics`. The seed command is idempotent and loads 30 demonstration complaints after migrations have run.
 
 ## Phase 5 Frontend Development
 

@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import time
 import uuid
@@ -24,6 +25,8 @@ class ComplaintService:
         fallback_provider: TriageProvider | None = None,
         observability: TriageObservability | None = None,
         stats_invalidator=None,
+        triage_cache=None,
+        triage_cache_ttl_seconds: int = 86400,
     ) -> None:
         self.repository = ComplaintRepository(session)
         self.session = session
@@ -31,30 +34,51 @@ class ComplaintService:
         self.fallback_provider = fallback_provider or RuleBasedTriage()
         self.observability = observability
         self.stats_invalidator = stats_invalidator
+        self.triage_cache = triage_cache
+        self.triage_cache_ttl_seconds = triage_cache_ttl_seconds
 
     async def create(self, data: ComplaintCreate) -> Complaint:
         complaint_id = uuid.uuid4()
         started = time.perf_counter()
         triaged_by = self.provider.name
-        try:
-            result = await self.provider.triage(data.text, data.location)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "triage provider failed; using fallback",
-                extra={
-                    "complaint_id": str(complaint_id),
-                    "provider": self.provider.name,
-                    "error_class": type(exc).__name__,
-                },
-            )
-            result = await self.fallback_provider.triage(data.text, data.location)
-            triaged_by = "rules:fallback"
+        cache_hit = False
+        cache_key = "triage:" + hashlib.sha256(
+            f"{data.text}\n{data.location}".encode()
+        ).hexdigest()
+        cached = await self.triage_cache.get(cache_key) if self.triage_cache else None
+        if cached:
+            from app.providers.triage.base import TriageResult
+
+            result = TriageResult.model_validate(cached["result"])
+            triaged_by = cached["provider"]
+            cache_hit = True
+        else:
+            try:
+                result = await self.provider.triage(data.text, data.location)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "triage provider failed; using fallback",
+                    extra={
+                        "complaint_id": str(complaint_id),
+                        "provider": self.provider.name,
+                        "error_class": type(exc).__name__,
+                    },
+                )
+                result = await self.fallback_provider.triage(data.text, data.location)
+                triaged_by = "rules:fallback"
+            if self.triage_cache:
+                await self.triage_cache.set(
+                    cache_key,
+                    {"provider": triaged_by, "result": result.model_dump(mode="json")},
+                    self.triage_cache_ttl_seconds,
+                )
         if self.observability is not None:
             self.observability.record(
                 TriageOutcome(
                     provider=triaged_by,
                     latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
                     fallback=triaged_by == "rules:fallback",
+                    cache_hit=cache_hit,
                 )
             )
         complaint = Complaint(

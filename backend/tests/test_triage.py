@@ -57,6 +57,18 @@ async def test_api_persists_rules_fallback_after_provider_failure(client, app) -
 
 
 @pytest.mark.asyncio
+async def test_api_reuses_triage_cache_and_reports_hit_rate(client) -> None:
+    request = {"text": "Burst water main flooding Street 12", "location": "Street 12"}
+    first = await client.post("/api/complaints", json=request)
+    second = await client.post("/api/complaints", json=request)
+    metadata = await client.get("/api/meta/providers")
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert metadata.json()["cache_hit_rate"] == 0.5
+    assert metadata.json()["recent_outcomes"][0]["cache_hit"] is True
+
+
+@pytest.mark.asyncio
 async def test_llm_provider_retries_rate_limit_once(monkeypatch) -> None:
     responses = [
         httpx.Response(429, request=httpx.Request("POST", "https://provider.test")),

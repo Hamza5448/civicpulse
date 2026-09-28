@@ -23,6 +23,8 @@ async def get_service(request: Request) -> AsyncIterator[ComplaintService]:
             fallback_provider=request.app.state.fallback_provider,
             observability=request.app.state.triage_observability,
             stats_invalidator=request.app.state.stats_cache.delete_stats,
+            triage_cache=request.app.state.triage_cache,
+            triage_cache_ttl_seconds=request.app.state.settings.triage_cache_ttl_seconds,
         )
 
 

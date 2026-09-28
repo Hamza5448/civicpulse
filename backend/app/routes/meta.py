@@ -13,4 +13,5 @@ async def provider_meta(request: Request) -> TriageProviderMetaResponse:
         recent_outcomes=[
             TriageOutcomeResponse.model_validate(outcome.__dict__) for outcome in outcomes
         ],
+        cache_hit_rate=request.app.state.triage_observability.cache_hit_rate,
     )

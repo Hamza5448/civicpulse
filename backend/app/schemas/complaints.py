@@ -46,8 +46,10 @@ class TriageOutcomeResponse(BaseModel):
     provider: str
     latency_ms: int
     fallback: bool
+    cache_hit: bool
 
 
 class TriageProviderMetaResponse(BaseModel):
     active_provider: str
     recent_outcomes: list[TriageOutcomeResponse]
+    cache_hit_rate: float
