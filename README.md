@@ -81,3 +81,17 @@ uvicorn app.main:app --reload
 ```
 
 Phase 3 adds selectable Rules, Simulated, hosted LLM, and Ollama triage providers with structured validation and rules fallback. Phase 4 adds Redis-backed statistics caching and distributed complaint rate limiting. The scope assumptions are recorded in [ADR 0002](docs/adr/0002-phase2-backend-scope.md), [ADR 0003](docs/adr/0003-triage-provider-strategy.md), and [ADR 0005](docs/adr/0005-redis-cache-and-rate-limit.md).
+
+## Phase 5 Frontend Development
+
+The frontend provides Submit, Dashboard, and Stats workflows using the existing backend contracts. Install dependencies and run the checks with:
+
+```powershell
+cd frontend
+npm install
+npm test -- --run
+npm run build
+npm run dev
+```
+
+The public runtime configuration lives in `frontend/public/config.js` and contains only the API base URL. The development server proxies `/api` to `http://localhost:8000`; see [ADR 0006](docs/adr/0006-frontend-runtime-api-config.md).
