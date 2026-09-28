@@ -23,6 +23,14 @@ async def test_ready_checks_database(client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_metrics_exposes_request_counter(client) -> None:
+    await client.get("/health")
+    response = await client.get("/metrics")
+    assert response.status_code == 200
+    assert "civicpulse_requests_total" in response.text
+
+
+@pytest.mark.asyncio
 async def test_provider_meta_exposes_active_provider_and_recent_outcomes(client) -> None:
     await client.post("/api/complaints", json=payload())
     response = await client.get("/api/meta/providers")
