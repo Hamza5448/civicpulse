@@ -22,14 +22,21 @@ async def get_service(request: Request) -> AsyncIterator[ComplaintService]:
             provider=request.app.state.triage_provider,
             fallback_provider=request.app.state.fallback_provider,
             observability=request.app.state.triage_observability,
+            stats_invalidator=request.app.state.stats_cache.delete_stats,
         )
 
 
 @router.post("", response_model=ComplaintResponse, status_code=status.HTTP_201_CREATED)
 async def create_complaint(
     payload: ComplaintCreate,
+    request: Request,
     service: ComplaintService = Depends(get_service),
 ) -> ComplaintResponse:
+    allowed, retry_after = await request.app.state.rate_limiter.check(request.client.host)
+    if not allowed:
+        from app.domain.rate_limit import RateLimitExceededError
+
+        raise RateLimitExceededError(retry_after)
     return await service.create(payload)
 
 

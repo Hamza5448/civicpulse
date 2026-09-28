@@ -40,6 +40,36 @@ async def test_create_complaint(client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stats_cache_miss_then_hit(client) -> None:
+    first = await client.get("/api/stats")
+    second = await client.get("/api/stats")
+    assert first.status_code == 200
+    assert first.headers["x-cache"] == "MISS"
+    assert second.headers["x-cache"] == "HIT"
+    assert second.json() == first.json()
+
+
+@pytest.mark.asyncio
+async def test_complaint_write_invalidates_stats_cache(client) -> None:
+    await client.get("/api/stats")
+    await client.get("/api/stats")
+    await client.post("/api/complaints", json=payload())
+    response = await client.get("/api/stats")
+    assert response.headers["x-cache"] == "MISS"
+    assert response.json()["by_category"]["water"] == 1
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_returns_retry_after(client, app) -> None:
+    app.state.rate_limiter.limit = 1
+    first = await client.post("/api/complaints", json=payload())
+    second = await client.post("/api/complaints", json=payload())
+    assert first.status_code == 201
+    assert second.status_code == 429
+    assert int(second.headers["retry-after"]) >= 1
+
+
+@pytest.mark.asyncio
 async def test_create_validation_error_is_field_level(client) -> None:
     response = await client.post("/api/complaints", json={"text": "short", "location": "x"})
     assert response.status_code == 400

@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 
 import pytest_asyncio
+from fakeredis.aioredis import FakeRedis
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -13,10 +14,15 @@ from app.main import create_app
 async def app(tmp_path):
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     application = create_app(Settings(database_url=database_url, log_level="WARNING"))
+    redis = FakeRedis(decode_responses=True)
+    application.state.redis = redis
+    application.state.stats_cache.redis = redis
+    application.state.rate_limiter.redis = redis
     engine = application.state.engine
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     yield application
+    await redis.aclose()
     await engine.dispose()
 
 

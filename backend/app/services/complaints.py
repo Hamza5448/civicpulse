@@ -23,12 +23,14 @@ class ComplaintService:
         provider: TriageProvider | None = None,
         fallback_provider: TriageProvider | None = None,
         observability: TriageObservability | None = None,
+        stats_invalidator=None,
     ) -> None:
         self.repository = ComplaintRepository(session)
         self.session = session
         self.provider = provider or RuleBasedTriage()
         self.fallback_provider = fallback_provider or RuleBasedTriage()
         self.observability = observability
+        self.stats_invalidator = stats_invalidator
 
     async def create(self, data: ComplaintCreate) -> Complaint:
         complaint_id = uuid.uuid4()
@@ -68,6 +70,8 @@ class ComplaintService:
         )
         created = await self.repository.create(complaint)
         await self.session.commit()
+        if self.stats_invalidator is not None:
+            await self.stats_invalidator()
         return created
 
     async def get(self, complaint_id: uuid.UUID) -> Complaint:

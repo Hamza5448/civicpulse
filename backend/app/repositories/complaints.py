@@ -53,3 +53,15 @@ class ComplaintRepository:
         await self.session.flush()
         await self.session.refresh(complaint)
         return complaint
+
+    async def stats(self) -> dict[str, dict[str, int]]:
+        category_rows = await self.session.execute(
+            select(Complaint.category, func.count()).group_by(Complaint.category)
+        )
+        priority_rows = await self.session.execute(
+            select(Complaint.priority, func.count()).group_by(Complaint.priority)
+        )
+        return {
+            "by_category": {category.value: count for category, count in category_rows},
+            "by_priority": {priority.value: count for priority, count in priority_rows},
+        }
