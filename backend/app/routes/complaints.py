@@ -21,6 +21,7 @@ async def get_service(request: Request) -> AsyncIterator[ComplaintService]:
             session,
             provider=request.app.state.triage_provider,
             fallback_provider=request.app.state.fallback_provider,
+            observability=request.app.state.triage_observability,
         )
 
 

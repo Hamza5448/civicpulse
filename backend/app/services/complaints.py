@@ -11,6 +11,7 @@ from app.providers.triage.base import TriageProvider
 from app.providers.triage.rules import RuleBasedTriage
 from app.repositories.complaints import ComplaintRepository
 from app.schemas.complaints import ComplaintCreate
+from app.services.triage import TriageObservability, TriageOutcome
 
 logger = logging.getLogger("civicpulse.triage")
 
@@ -21,11 +22,13 @@ class ComplaintService:
         session: AsyncSession,
         provider: TriageProvider | None = None,
         fallback_provider: TriageProvider | None = None,
+        observability: TriageObservability | None = None,
     ) -> None:
         self.repository = ComplaintRepository(session)
         self.session = session
         self.provider = provider or RuleBasedTriage()
         self.fallback_provider = fallback_provider or RuleBasedTriage()
+        self.observability = observability
 
     async def create(self, data: ComplaintCreate) -> Complaint:
         complaint_id = uuid.uuid4()
@@ -44,6 +47,14 @@ class ComplaintService:
             )
             result = await self.fallback_provider.triage(data.text, data.location)
             triaged_by = "rules:fallback"
+        if self.observability is not None:
+            self.observability.record(
+                TriageOutcome(
+                    provider=triaged_by,
+                    latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
+                    fallback=triaged_by == "rules:fallback",
+                )
+            )
         complaint = Complaint(
             id=complaint_id,
             text=data.text,

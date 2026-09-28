@@ -23,6 +23,16 @@ async def test_ready_checks_database(client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_provider_meta_exposes_active_provider_and_recent_outcomes(client) -> None:
+    await client.post("/api/complaints", json=payload())
+    response = await client.get("/api/meta/providers")
+    assert response.status_code == 200
+    assert response.json()["active_provider"] == "rules"
+    assert response.json()["recent_outcomes"][0]["provider"] == "rules"
+    assert response.json()["recent_outcomes"][0]["fallback"] is False
+
+
+@pytest.mark.asyncio
 async def test_create_complaint(client) -> None:
     response = await client.post("/api/complaints", json=payload())
     assert response.status_code == 201
