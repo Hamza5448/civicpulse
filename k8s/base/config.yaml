@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: civicpulse-config
+  namespace: civicpulse
+data:
+  POSTGRES_DB: "civicpulse"
+  POSTGRES_USER: "civicuser"
+  DATABASE_URL: "postgresql+asyncpg://civicuser:civicpassword123@postgres:5432/civicpulse"
+  REDIS_URL: "redis://redis:6379/0"
+  TRIAGE_PROVIDER: "simulated"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: civicpulse-secret
+  namespace: civicpulse
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "civicpassword123"
