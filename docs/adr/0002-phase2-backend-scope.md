@@ -16,3 +16,7 @@ Phase 2 persists the assignment-defined triage fields without implementing an ex
 - The Phase 2 API and database schema are ready for later triage integration.
 - No external network, Redis, or provider behavior is hidden in the backend core.
 - Provider-backed triage must replace the defaults and populate the nullable metadata in a later phase.
+
+## Current implementation note
+
+Later application phases completed that planned replacement. Complaint input no longer accepts category or priority; the selected provider produces both fields and the service records summary, provider, and latency.

@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.database import create_engine, create_session_factory
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, request_id_context
 from app.domain.errors import ComplaintNotFoundError, InvalidStatusTransitionError
 from app.domain.rate_limit import RateLimitExceededError
 from app.providers.cache.redis import RedisJsonCache, RedisRateLimiter, RedisStatsCache
@@ -33,10 +33,14 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         started = time.perf_counter()
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        request.app.state.metrics.observe_request(started)
-        return response
+        token = request_id_context.set(request_id)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            request.app.state.metrics.observe_request(started)
+            request_id_context.reset(token)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
