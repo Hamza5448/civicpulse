@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from app.db.models.complaint import Category, ComplaintStatus, Priority
+from app.db.models.complaint import Category, ComplaintStatus
 from app.domain.errors import ComplaintNotFoundError, InvalidStatusTransitionError
 from app.schemas.complaints import ComplaintCreate
 from app.services.complaints import ComplaintService
@@ -16,8 +16,8 @@ def complaint_data(**overrides) -> ComplaintCreate:
 
 def test_valid_complaint_input() -> None:
     complaint = complaint_data()
-    assert complaint.category is Category.OTHER
-    assert complaint.priority is Priority.NORMAL
+    assert complaint.text == "Burst water main flooding Street 12"
+    assert set(complaint.model_fields_set) == {"text", "location"}
 
 
 def test_invalid_complaint_input() -> None:

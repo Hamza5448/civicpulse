@@ -1,6 +1,9 @@
 import json
 import logging
 import sys
+from contextvars import ContextVar
+
+request_id_context: ContextVar[str] = ContextVar("request_id", default="system")
 
 
 class JsonFormatter(logging.Formatter):
@@ -9,10 +12,8 @@ class JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
+            "request_id": getattr(record, "request_id", request_id_context.get()),
         }
-        request_id = getattr(record, "request_id", None)
-        if request_id:
-            payload["request_id"] = request_id
         for field in ("complaint_id", "provider", "error_class"):
             value = getattr(record, field, None)
             if value:

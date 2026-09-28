@@ -1,97 +1,126 @@
 # CivicPulse
 
-## Problem Statement
+CivicPulse is a municipal complaint intake and operations platform. Residents submit free-text complaints, a replaceable triage provider assigns category and priority, and operators review, filter, and advance complaints through an explicit status workflow.
 
-Residents need a clear way to submit civic complaints, while operations teams need a consistent and transparent way to review, triage, and track those complaints.
+## Architecture
 
-## Project Purpose
-
-CivicPulse will provide a civic complaint intake and operations workflow. Later phases will add complaint submission, AI-assisted triage, operational dashboards, persistence, and deployment automation.
-
-## Technology Stack
-
-- Frontend: React 18, Vite, and TypeScript
-- Backend: FastAPI and Pydantic v2
-- Database: PostgreSQL 16
-- Cache and rate limiting: Redis 7
-- Future AI providers: LLM, Ollama, RuleBased, and Simulated
-- Future deployment: Docker Compose, Kubernetes, and CI/CD
-
-## High-Level Architecture
-
-The backend follows a one-way dependency direction:
-
-```text
-routes -> services -> repositories
-             |
-             v
-         providers
+```mermaid
+flowchart LR
+    Browser[React/Vite browser app] --> Client[Generated OpenAPI types + API client]
+    Client --> Routes[FastAPI routes]
+    Routes --> Services[Business services]
+    Services --> Repositories[SQLAlchemy repositories]
+    Repositories --> Postgres[(PostgreSQL)]
+    Services --> Providers[Triage and cache providers]
+    Providers --> Redis[(Redis)]
+    Providers --> Rules[Rules / Simulated]
+    Providers --> Models[Hosted LLM / Ollama]
 ```
 
-- `routes` will contain HTTP concerns only.
-- `services` will contain business rules and orchestration.
-- `repositories` will contain persistence and SQL access.
-- `providers` will contain external integrations such as AI and Redis abstractions.
-- Routes will not access the database directly, and business rules will not be duplicated in the frontend.
+Routes handle HTTP only. Services own orchestration and business rules, repositories own SQL, and providers isolate Redis and model integrations. The frontend renders backend decisions and does not duplicate the status-transition table.
 
-The provider abstraction is recorded in [ADR 0001](docs/adr/0001-provider-interface.md).
+## Implemented workflows
 
-## Repository Structure
+- Complaint submission with client and server validation, loading feedback, triage result, provider, and rate-limit feedback.
+- Operations dashboard with pagination, category/priority/status filters, and backend-enforced status transitions.
+- Statistics by category and priority with visible `X-Cache: HIT|MISS` behavior.
+- Rules, simulated, hosted LLM, and Ollama triage providers selected through configuration.
+- Structured output validation, ten-second provider timeout, one jittered retry, and deterministic rules fallback.
+- PostgreSQL persistence through Alembic migrations.
+- Redis statistics cache, content-hash triage cache, and distributed fixed-window rate limiter.
+- JSON logging with request ID propagation and Prometheus metrics.
 
-```text
-civicpulse/
-├── backend/       # FastAPI application, persistence, providers, and tests
-├── frontend/      # React/Vite/TypeScript application and tests
-├── k8s/           # Kubernetes base and environment overlays (later phase)
-├── load/          # Load-test assets (later phase)
-├── docs/          # Architecture decisions and evidence
-├── .github/       # CI workflows (later phase)
-├── compose.yaml   # Local service foundation (later phase)
-├── compose.prod.yaml
-├── .env.example
-└── README.md
-```
+## Prerequisites
 
-## Development Prerequisites
-
-- Git
 - Python 3.11 or newer
 - Node.js 20 or newer and npm
-- PostgreSQL 16 for later backend development
-- Redis 7 for later cache and rate-limiting development
-- Docker Desktop for later containerized development
+- PostgreSQL 16
+- Redis 7
 
-## Quickstart
+Containerized startup is developed separately from this application-completion branch.
 
-> **To be completed in a later phase.** Local service orchestration, database migrations, backend startup, frontend startup, and test commands will be documented when those implementations are added.
+## Backend quickstart
 
-Never commit a real `.env` file or credentials. Start from `.env.example` and use local, untracked values.
-
-## Phase 2 Backend Development
-
-The backend core can be tested locally with an isolated SQLite database while production configuration targets PostgreSQL 16:
+From a clean clone, create an ignored `.env` from `.env.example`, replace its development placeholders, and install the backend:
 
 ```powershell
 cd backend
 python -m pip install -e ".[dev]"
-$env:DATABASE_URL = "sqlite+aiosqlite:///./civicpulse-dev.db"
+```
+
+Set service URLs, apply the migration, seed the database, and start FastAPI:
+
+```powershell
+$env:DATABASE_URL = "postgresql+asyncpg://civicpulse:<local-password>@localhost:5432/civicpulse"
+$env:REDIS_URL = "redis://localhost:6379/0"
 alembic upgrade head
-pytest -q
+cd ..
+python scripts/seed.py
+cd backend
 uvicorn app.main:app --reload
 ```
 
-Phase 3 adds selectable Rules, Simulated, hosted LLM, and Ollama triage providers with structured validation and rules fallback. Phase 4 adds Redis-backed statistics caching and distributed complaint rate limiting. The scope assumptions are recorded in [ADR 0002](docs/adr/0002-phase2-backend-scope.md), [ADR 0003](docs/adr/0003-triage-provider-strategy.md), and [ADR 0005](docs/adr/0005-redis-cache-and-rate-limit.md).
+The seed command is idempotent. The first run creates 30 complaints; the second reports that all 30 already exist.
 
-## Phase 5 Frontend Development
+## Frontend quickstart
 
-The frontend provides Submit, Dashboard, and Stats workflows using the existing backend contracts. Install dependencies and run the checks with:
+In a second terminal:
 
 ```powershell
 cd frontend
 npm install
-npm test -- --run
-npm run build
 npm run dev
 ```
 
-The public runtime configuration lives in `frontend/public/config.js` and contains only the API base URL. The development server proxies `/api` to `http://localhost:8000`; see [ADR 0006](docs/adr/0006-frontend-runtime-api-config.md).
+Open <http://localhost:5173>. Vite proxies `/api`, `/health`, and `/ready` to the local backend. `/config.js` supplies the public API base at runtime, so the frontend bundle contains no environment-specific backend URL or secret.
+
+## API contract
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| `POST` | `/api/complaints` | Validate, triage, and persist; returns `201`, field-level `400`, or rate-limit `429` |
+| `GET` | `/api/complaints/{id}` | Retrieve one complaint; returns `404` when absent |
+| `GET` | `/api/complaints` | Filter by category, priority, and status; paginate up to 100 rows |
+| `PATCH` | `/api/complaints/{id}/status` | Apply the explicit state machine; invalid transitions return descriptive `409` |
+| `GET` | `/api/stats` | Category and priority aggregates with `X-Cache: HIT|MISS` |
+| `GET` | `/api/meta/providers` | Active provider, last 20 outcomes, latency, fallback, and cache-hit rate |
+| `GET` | `/health` | Process liveness without dependency access |
+| `GET` | `/ready` | PostgreSQL and Redis readiness with failed dependency name |
+| `GET` | `/metrics` | Prometheus counters and request/triage latency histograms |
+
+The committed [OpenAPI schema](backend/openapi.json) generates [frontend type declarations](frontend/src/api/schema.d.ts). Verify contract synchronization with:
+
+```powershell
+cd frontend
+npm run check:api
+```
+
+## Validation
+
+Backend tests enforce at least 65% coverage:
+
+```powershell
+cd backend
+pytest -q
+ruff check app tests alembic ..\scripts
+python -m compileall app tests alembic ..\scripts
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm test -- --run
+npm run check:api
+npm run build
+```
+
+The current measured backend coverage is 95.83% across 37 passing tests. Six meaningful frontend workflow tests pass.
+
+## Operations behavior
+
+Uvicorn handles `SIGTERM` by stopping acceptance of new connections and waiting for in-flight requests. FastAPI lifespan shutdown then closes the SQLAlchemy engine and Redis client. Container orchestration must provide a termination grace period at least as long as Uvicorn's graceful-shutdown timeout.
+
+Every application log is JSON and includes `request_id`. Incoming `X-Request-ID` values are propagated; otherwise the backend generates one and returns it in the response. Triage fallback warnings also include complaint ID, provider, and error class.
+
+See [docs/RUNBOOK.md](docs/RUNBOOK.md) for operational diagnosis, [docs/ENGINEERING-NOTES.md](docs/ENGINEERING-NOTES.md) for measured decisions and pending infrastructure evidence, and [docs/AI-USAGE.md](docs/AI-USAGE.md) for attribution.

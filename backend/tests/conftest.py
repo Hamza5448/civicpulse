@@ -17,6 +17,7 @@ async def app(tmp_path):
     redis = FakeRedis(decode_responses=True)
     application.state.redis = redis
     application.state.stats_cache.redis = redis
+    application.state.triage_cache.redis = redis
     application.state.rate_limiter.redis = redis
     engine = application.state.engine
     async with engine.begin() as connection:

@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -10,16 +11,18 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.database import create_engine, create_session_factory
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, request_id_context
 from app.domain.errors import ComplaintNotFoundError, InvalidStatusTransitionError
 from app.domain.rate_limit import RateLimitExceededError
-from app.providers.cache.redis import RedisRateLimiter, RedisStatsCache
+from app.providers.cache.redis import RedisJsonCache, RedisRateLimiter, RedisStatsCache
 from app.providers.triage.factory import create_triage_provider
 from app.providers.triage.rules import RuleBasedTriage
 from app.routes.complaints import router as complaint_router
 from app.routes.health import router as health_router
 from app.routes.meta import router as meta_router
+from app.routes.metrics import router as metrics_router
 from app.routes.stats import router as stats_router
+from app.services.metrics import Metrics
 from app.services.triage import TriageObservability
 
 logger = logging.getLogger("civicpulse")
@@ -27,11 +30,17 @@ logger = logging.getLogger("civicpulse")
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        started = time.perf_counter()
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
+        token = request_id_context.set(request_id)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            request.app.state.metrics.observe_request(started)
+            request_id_context.reset(token)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -53,17 +62,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.redis = redis
     app.state.stats_cache = RedisStatsCache(redis)
+    app.state.triage_cache = RedisJsonCache(redis)
     app.state.rate_limiter = RedisRateLimiter(
         redis, resolved_settings.complaint_rate_limit, resolved_settings.complaint_rate_window_seconds
     )
     app.state.triage_provider = create_triage_provider(resolved_settings)
     app.state.fallback_provider = RuleBasedTriage()
     app.state.triage_observability = TriageObservability()
+    app.state.metrics = Metrics()
     app.add_middleware(RequestIdMiddleware)
     app.include_router(health_router)
     app.include_router(complaint_router)
     app.include_router(meta_router)
     app.include_router(stats_router)
+    app.include_router(metrics_router)
 
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         return JSONResponse(status_code=400, content={"detail": exc.errors()})

@@ -28,6 +28,18 @@ class RedisStatsCache:
         await self.delete("stats:complaints")
 
 
+class RedisJsonCache:
+    def __init__(self, redis) -> None:
+        self.redis = redis
+
+    async def get(self, key: str) -> dict | None:
+        cached = await self.redis.get(key)
+        return json.loads(cached) if cached else None
+
+    async def set(self, key: str, value: dict, ttl_seconds: int) -> None:
+        await self.redis.set(key, json.dumps(value), ex=ttl_seconds)
+
+
 class RedisRateLimiter:
     def __init__(self, redis, limit: int, window_seconds: int) -> None:
         self.redis = redis
@@ -44,3 +56,11 @@ class RedisRateLimiter:
             await self.redis.expire(key, self.window_seconds)
             ttl = self.window_seconds
         return count <= self.limit, max(1, ttl)
+
+
+class RedisHealthCheck:
+    def __init__(self, redis) -> None:
+        self.redis = redis
+
+    async def check(self) -> None:
+        await self.redis.ping()
