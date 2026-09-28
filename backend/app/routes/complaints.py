@@ -17,7 +17,12 @@ router = APIRouter(prefix="/api/complaints", tags=["complaints"])
 
 async def get_service(request: Request) -> AsyncIterator[ComplaintService]:
     async with request.app.state.session_factory() as session:
-        yield ComplaintService(session)
+        yield ComplaintService(
+            session,
+            provider=request.app.state.triage_provider,
+            fallback_provider=request.app.state.fallback_provider,
+            observability=request.app.state.triage_observability,
+        )
 
 
 @router.post("", response_model=ComplaintResponse, status_code=status.HTTP_201_CREATED)

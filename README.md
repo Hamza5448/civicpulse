@@ -80,4 +80,4 @@ pytest -q
 uvicorn app.main:app --reload
 ```
 
-Phase 2 intentionally defers Redis and external AI providers. The scope assumption is recorded in [ADR 0002](docs/adr/0002-phase2-backend-scope.md).
+Phase 3 adds selectable Rules, Simulated, hosted LLM, and Ollama triage providers with structured validation and rules fallback. Redis caching and distributed rate limiting remain deferred. The scope assumptions are recorded in [ADR 0002](docs/adr/0002-phase2-backend-scope.md) and [ADR 0003](docs/adr/0003-triage-provider-strategy.md).

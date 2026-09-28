@@ -40,3 +40,14 @@ class ComplaintListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class TriageOutcomeResponse(BaseModel):
+    provider: str
+    latency_ms: int
+    fallback: bool
+
+
+class TriageProviderMetaResponse(BaseModel):
+    active_provider: str
+    recent_outcomes: list[TriageOutcomeResponse]
