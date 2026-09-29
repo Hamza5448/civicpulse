@@ -55,7 +55,7 @@ jobs:
           cd backend
           pip install -e . || true
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
-          pip install pytest pytest-cov pytest-asyncio fastapi httpx pydantic sqlalchemy alembic redis fakeredis
+          pip install pytest pytest-cov pytest-asyncio fastapi httpx pydantic sqlalchemy alembic redis fakeredis aiosqlite asyncpg greenlet
           pytest --cov=app --cov-report=term-missing tests/
 
   test-frontend:
