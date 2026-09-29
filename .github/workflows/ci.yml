@@ -50,7 +50,7 @@ jobs:
 
       - name: Run Pytest
         env:
-          TRIAGE_PROVIDER: simulated
+          TRIAGE_PROVIDER: rules
         run: |
           cd backend
           pip install -e . || true

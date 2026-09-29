@@ -19,7 +19,7 @@ jobs:
           python-version: "3.12"
       - name: Run Backend Tests
         env:
-          TRIAGE_PROVIDER: simulated
+          TRIAGE_PROVIDER: rules
         run: |
           cd backend
           pip install -e . || true
