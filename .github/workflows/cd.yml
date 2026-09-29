@@ -1,0 +1,92 @@
+﻿name: CD Pipeline
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run Backend Tests
+        env:
+          TRIAGE_PROVIDER: simulated
+        run: |
+          cd backend
+          pip install -r requirements.txt pytest pytest-cov
+          pytest --cov=app --cov-report=term-missing tests/
+
+  build-push:
+    needs: [test]
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.sha_short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute short SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/civicpulse-backend:${{ steps.vars.outputs.sha_short }}
+            ghcr.io/${{ github.repository_owner }}/civicpulse-backend:latest
+
+      - name: Build & Push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/civicpulse-frontend:${{ steps.vars.outputs.sha_short }}
+            ghcr.io/${{ github.repository_owner }}/civicpulse-frontend:latest
+
+  deploy-k8s:
+    needs: [build-push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create kind Cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: civicpulse-ci
+
+      - name: Update Image Tags & Deploy
+        run: |
+          cd k8s/overlays/prod
+          kustomize edit set image backend=ghcr.io/${{ github.repository_owner }}/civicpulse-backend:${{ needs.build-push.outputs.image_tag }}
+          kustomize edit set image frontend=ghcr.io/${{ github.repository_owner }}/civicpulse-frontend:${{ needs.build-push.outputs.image_tag }}
+          kubectl apply -k .
+
+      - name: Verify Rollout Status
+        run: |
+          kubectl rollout status deployment/backend -n civicpulse --timeout=120s
+          kubectl rollout status deployment/frontend -n civicpulse --timeout=120s
+
+      - name: Cluster Health Inspection
+        run: |
+          kubectl get pods -n civicpulse
+          kubectl get services -n civicpulse
+          kubectl get hpa -n civicpulse || true
