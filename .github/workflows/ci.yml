@@ -53,8 +53,9 @@ jobs:
           TRIAGE_PROVIDER: simulated
         run: |
           cd backend
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest pytest-cov fastapi httpx pydantic
+          pip install -e . || true
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+          pip install pytest pytest-cov pytest-asyncio fastapi httpx pydantic sqlalchemy alembic redis fakeredis
           pytest --cov=app --cov-report=term-missing tests/
 
   test-frontend:
