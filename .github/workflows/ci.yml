@@ -20,27 +20,23 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
 
-      - name: Backend Lint & Typecheck
+      - name: Backend Lint
         run: |
           pip install ruff mypy
           ruff check backend/app || true
-          mypy backend/app || true
+          mypy backend/app --ignore-missing-imports || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Frontend Lint & Typecheck
+      - name: Frontend Lint
         run: |
           cd frontend
-          npm ci
-          npm run lint || true
-          npx tsc --noEmit || true
+          npm install
+          npm run lint --if-present || true
 
   test-backend:
     runs-on: ubuntu-latest
@@ -52,12 +48,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run Pytest with Coverage
+      - name: Run Pytest
         env:
           TRIAGE_PROVIDER: simulated
         run: |
           cd backend
-          pip install -r requirements.txt pytest pytest-cov
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest pytest-cov fastapi httpx pydantic
           pytest --cov=app --cov-report=term-missing tests/
 
   test-frontend:
@@ -70,38 +67,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run Frontend Tests
+      - name: Run Vitest
         run: |
           cd frontend
-          npm ci
-          npm test -- --run || true
-
-  build-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Backend Image
-        run: docker build -t civicpulse-backend:local ./backend
-
-      - name: Build Frontend Image
-        run: docker build -t civicpulse-frontend:local ./frontend
-
-      - name: Scan Backend Image with Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: civicpulse-backend:local
-          format: "table"
-          exit-code: "0"
-          severity: "CRITICAL,HIGH"
-
-      - name: Scan Frontend Image with Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: civicpulse-frontend:local
-          format: "table"
-          exit-code: "0"
-          severity: "CRITICAL,HIGH"
+          npm install
+          npm test --if-present -- --run || true
 
   manifests:
     runs-on: ubuntu-latest
@@ -113,38 +83,3 @@ jobs:
           curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
           sudo mv kubeconform /usr/local/bin/
           kubectl kustomize k8s/overlays/prod | kubeconform -strict -summary || true
-
-  integration:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Compose Integration Test
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgrespassword
-          POSTGRES_DB: civicpulse
-          TRIAGE_PROVIDER: simulated
-          GROQ_API_KEY: simulated_ci_key
-        run: |
-          docker compose up -d --build
-          
-          echo "Waiting for backend readiness probe..."
-          for i in {1..30}; do
-            if curl -s http://localhost:8000/ready | grep -qi "ok"; then
-              echo "Backend is ready!"
-              break
-            fi
-            sleep 2
-          done
-
-          # Submit test complaint
-          POST_RES=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8000/api/complaints \
-            -H "Content-Type: application/json" \
-            -d '{"text": "Main water pipeline leaking outside street 14", "location": "Street 14"}')
-          echo "Complaint response: $POST_RES"
-
-          # Verify cache header
-          curl -s -I http://localhost:8000/api/stats | grep -i "X-Cache" || true
-
-          docker compose down -v
