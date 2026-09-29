@@ -52,13 +52,34 @@ class Complaint(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     location: Mapped[str] = mapped_column(String(200), nullable=False)
     reporter_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    category: Mapped[Category] = mapped_column(Enum(Category, name="category_enum"), nullable=False)
-    priority: Mapped[Priority] = mapped_column(Enum(Priority, name="priority_enum"), nullable=False)
+
+    # Use values_callable so SQLAlchemy sends the lowercase value ("water") instead of the uppercase member name ("WATER")
+    category: Mapped[Category] = mapped_column(
+        Enum(
+            Category,
+            name="category_enum",
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
+        nullable=False,
+    )
+    priority: Mapped[Priority] = mapped_column(
+        Enum(
+            Priority,
+            name="priority_enum",
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
+        nullable=False,
+    )
     status: Mapped[ComplaintStatus] = mapped_column(
-        Enum(ComplaintStatus, name="complaint_status_enum"),
+        Enum(
+            ComplaintStatus,
+            name="complaint_status_enum",
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=ComplaintStatus.OPEN,
     )
+
     ai_summary: Mapped[str | None] = mapped_column(String(140), nullable=True)
     triaged_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     triage_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

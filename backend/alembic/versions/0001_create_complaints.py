@@ -7,6 +7,7 @@ Revises:
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -15,8 +16,8 @@ down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-
-category_enum = sa.Enum(
+# Base definition for creation/drop
+category_enum = postgresql.ENUM(
     "water",
     "electricity",
     "sanitation",
@@ -25,8 +26,24 @@ category_enum = sa.Enum(
     "other",
     name="category_enum",
 )
-priority_enum = sa.Enum("high", "normal", "low", name="priority_enum")
-status_enum = sa.Enum("open", "in_progress", "resolved", "rejected", name="complaint_status_enum")
+priority_enum = postgresql.ENUM("high", "normal", "low", name="priority_enum")
+status_enum = postgresql.ENUM("open", "in_progress", "resolved", "rejected", name="complaint_status_enum")
+
+# Column references with create_type=False to prevent double-execution
+category_col_type = postgresql.ENUM(
+    "water",
+    "electricity",
+    "sanitation",
+    "roads",
+    "streetlights",
+    "other",
+    name="category_enum",
+    create_type=False,
+)
+priority_col_type = postgresql.ENUM("high", "normal", "low", name="priority_enum", create_type=False)
+status_col_type = postgresql.ENUM(
+    "open", "in_progress", "resolved", "rejected", name="complaint_status_enum", create_type=False
+)
 
 
 def upgrade() -> None:
@@ -35,15 +52,16 @@ def upgrade() -> None:
         category_enum.create(bind, checkfirst=True)
         priority_enum.create(bind, checkfirst=True)
         status_enum.create(bind, checkfirst=True)
+
     op.create_table(
         "complaints",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("location", sa.String(length=200), nullable=False),
         sa.Column("reporter_contact", sa.String(length=255), nullable=True),
-        sa.Column("category", category_enum, nullable=False),
-        sa.Column("priority", priority_enum, nullable=False),
-        sa.Column("status", status_enum, nullable=False, server_default="open"),
+        sa.Column("category", category_col_type, nullable=False),
+        sa.Column("priority", priority_col_type, nullable=False),
+        sa.Column("status", status_col_type, nullable=False, server_default="open"),
         sa.Column("ai_summary", sa.String(length=140), nullable=True),
         sa.Column("triaged_by", sa.String(length=32), nullable=True),
         sa.Column("triage_latency_ms", sa.Integer(), nullable=True),

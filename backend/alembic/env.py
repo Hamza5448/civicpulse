@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -10,7 +11,11 @@ from app.db import models  # noqa: F401
 from app.db.base import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
+
+# Prefer container environment variable, fallback to settings
+db_url = os.getenv("DATABASE_URL") or get_settings().database_url
+config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

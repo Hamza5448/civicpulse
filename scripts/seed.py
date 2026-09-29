@@ -13,7 +13,6 @@ from app.core.config import get_settings
 from app.core.database import create_engine, create_session_factory
 from app.db.models.complaint import Category, Complaint, Priority
 
-
 SEED_ROWS = [
     ("Water line burst near masjid and pani entering two houses", "Street 12", Category.WATER, Priority.HIGH),
     ("Gutter overflow after rain, dirty water standing outside school", "Block B", Category.SANITATION, Priority.HIGH),
@@ -59,13 +58,15 @@ async def seed() -> None:
         for (text, location, category, priority), complaint_id in zip(SEED_ROWS, ids):
             if complaint_id in existing:
                 continue
+            cat_val = category.value if hasattr(category, "value") else str(category).lower()
+            prio_val = priority.value if hasattr(priority, "value") else str(priority).lower()
             session.add(
                 Complaint(
                     id=complaint_id,
                     text=text,
                     location=location,
-                    category=category,
-                    priority=priority,
+                    category=cat_val,
+                    priority=prio_val,
                     ai_summary=text[:140],
                     triaged_by="rules",
                     triage_latency_ms=0,
