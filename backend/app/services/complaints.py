@@ -12,6 +12,7 @@ from app.providers.triage.base import TriageProvider
 from app.providers.triage.rules import RuleBasedTriage
 from app.repositories.complaints import ComplaintRepository
 from app.schemas.complaints import ComplaintCreate
+from app.services.metrics import Metrics
 from app.services.triage import TriageObservability, TriageOutcome
 
 logger = logging.getLogger("civicpulse.triage")
@@ -27,6 +28,7 @@ class ComplaintService:
         stats_invalidator=None,
         triage_cache=None,
         triage_cache_ttl_seconds: int = 86400,
+        metrics: Metrics | None = None,
     ) -> None:
         self.repository = ComplaintRepository(session)
         self.session = session
@@ -36,12 +38,14 @@ class ComplaintService:
         self.stats_invalidator = stats_invalidator
         self.triage_cache = triage_cache
         self.triage_cache_ttl_seconds = triage_cache_ttl_seconds
+        self.metrics = metrics
 
     async def create(self, data: ComplaintCreate) -> Complaint:
         complaint_id = uuid.uuid4()
         started = time.perf_counter()
         triaged_by = self.provider.name
         cache_hit = False
+        fallback_used = False
         cache_key = "triage:" + hashlib.sha256(
             f"{data.text}\n{data.location}".encode()
         ).hexdigest()
@@ -66,21 +70,25 @@ class ComplaintService:
                 )
                 result = await self.fallback_provider.triage(data.text, data.location)
                 triaged_by = "rules:fallback"
+                fallback_used = True
             if self.triage_cache:
                 await self.triage_cache.set(
                     cache_key,
                     {"provider": triaged_by, "result": result.model_dump(mode="json")},
                     self.triage_cache_ttl_seconds,
                 )
+        latency_ms = max(0, round((time.perf_counter() - started) * 1000))
         if self.observability is not None:
             self.observability.record(
                 TriageOutcome(
                     provider=triaged_by,
-                    latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
+                    latency_ms=latency_ms,
                     fallback=triaged_by == "rules:fallback",
                     cache_hit=cache_hit,
                 )
             )
+        if self.metrics is not None:
+            self.metrics.observe_triage(latency_ms / 1000, fallback=fallback_used)
         complaint = Complaint(
             id=complaint_id,
             text=data.text,
@@ -90,7 +98,7 @@ class ComplaintService:
             priority=result.priority,
             ai_summary=result.summary,
             triaged_by=triaged_by,
-            triage_latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
+            triage_latency_ms=latency_ms,
         )
         created = await self.repository.create(complaint)
         await self.session.commit()

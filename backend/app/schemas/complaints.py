@@ -7,11 +7,11 @@ from app.db.models.complaint import Category, ComplaintStatus, Priority
 
 
 class ComplaintCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     text: str = Field(min_length=10, max_length=2000)
     location: str = Field(min_length=3, max_length=200)
     reporter_contact: str | None = Field(default=None, max_length=255)
-    category: Category = Category.OTHER
-    priority: Priority = Priority.NORMAL
 
 
 class ComplaintStatusUpdate(BaseModel):
@@ -53,3 +53,8 @@ class TriageProviderMetaResponse(BaseModel):
     active_provider: str
     recent_outcomes: list[TriageOutcomeResponse]
     cache_hit_rate: float
+
+
+class StatsResponse(BaseModel):
+    by_category: dict[str, int]
+    by_priority: dict[str, int]

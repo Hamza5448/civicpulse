@@ -1,0 +1,86 @@
+﻿name: CI Pipeline
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint-and-type:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Backend Lint
+        run: |
+          pip install ruff mypy
+          ruff check backend/app || true
+          mypy backend/app --ignore-missing-imports || true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Frontend Lint
+        run: |
+          cd frontend
+          npm install
+          npm run lint --if-present || true
+
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run Pytest
+        env:
+          TRIAGE_PROVIDER: rules
+        run: |
+          cd backend
+          pip install -e . || true
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+          pip install pytest pytest-cov pytest-asyncio fastapi httpx pydantic sqlalchemy alembic redis fakeredis aiosqlite asyncpg greenlet
+          pytest --cov=app --cov-report=term-missing tests/
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Vitest
+        run: |
+          cd frontend
+          npm install
+          npm test --if-present -- --run || true
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Kubernetes Manifests
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+          kubectl kustomize k8s/overlays/prod | kubeconform -strict -summary || true

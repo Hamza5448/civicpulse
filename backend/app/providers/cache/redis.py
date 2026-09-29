@@ -56,3 +56,11 @@ class RedisRateLimiter:
             await self.redis.expire(key, self.window_seconds)
             ttl = self.window_seconds
         return count <= self.limit, max(1, ttl)
+
+
+class RedisHealthCheck:
+    def __init__(self, redis) -> None:
+        self.redis = redis
+
+    async def check(self) -> None:
+        await self.redis.ping()

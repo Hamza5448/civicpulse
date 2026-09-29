@@ -7,6 +7,7 @@ from app.db.models.complaint import Category, Priority
 from app.providers.triage.base import TriageResult
 from app.providers.triage.factory import create_triage_provider
 from app.providers.triage.llm import LLMTriage
+from app.providers.triage.ollama import OllamaTriage
 from app.providers.triage.rules import RuleBasedTriage
 from app.providers.triage.simulated import SimulatedTriage
 
@@ -54,6 +55,8 @@ async def test_api_persists_rules_fallback_after_provider_failure(client, app) -
     assert response.status_code == 201
     assert response.json()["triaged_by"] == "rules:fallback"
     assert response.json()["category"] == "water"
+    metrics = await client.get("/metrics")
+    assert "civicpulse_triage_fallbacks_total 1" in metrics.text
 
 
 @pytest.mark.asyncio
@@ -137,3 +140,43 @@ async def test_llm_provider_rejects_malformed_structured_output(monkeypatch) -> 
         await LLMTriage("https://provider.test", "model", "test-key").triage(
             "Complaint text", "Block 4"
         )
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_retries_server_error_once(monkeypatch) -> None:
+    responses = [
+        httpx.Response(503, request=httpx.Request("POST", "http://ollama.test")),
+        httpx.Response(
+            200,
+            json={
+                "response": (
+                    '{"category":"roads","priority":"normal",'
+                    '"summary":"Pothole reported","confidence":0.8}'
+                )
+            },
+            request=httpx.Request("POST", "http://ollama.test"),
+        ),
+    ]
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, *args, **kwargs):
+            response = responses[self.calls]
+            self.calls += 1
+            return response
+
+    client = FakeClient()
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *args, **kwargs: client)
+    result = await OllamaTriage("http://ollama.test", "model").triage(
+        "Large pothole beside the market", "Market Road"
+    )
+    assert result.category is Category.ROADS
+    assert client.calls == 2
